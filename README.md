@@ -1,0 +1,1 @@
+You just need to run main.py. This generates a GUI where you can point to the folder with your files and select options such as the format and whether or not your data need to be transposed. If the ROI title is a column title, the data need to be transposed. If the ROI title is a row title, it does not need to be transposed. 

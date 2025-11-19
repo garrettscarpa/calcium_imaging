@@ -32,7 +32,7 @@ class InteractivePlotter:
         self.ax1.clear()
         self.ax1.plot(time, trace)
         self.ax1.set_title(f"Full Trace: {self.current_roi}")
-        self.ax1.set_ylim(self.y_ax_range)
+        #self.ax1.set_ylim(self.y_ax_range)
 
         if not self.peaks_in_roi.empty:
             peak_row = self.peaks_in_roi.iloc[self.peak_idx]
@@ -67,6 +67,7 @@ class InteractivePlotter:
                 self.ax2.plot(right_base_time, trace.iloc[int(right_base_time * self.fs)], 'go', label='Right base')
 
         return self.fig, self.ax1, self.ax2, self.roi_ids, self.roi_idx, self.current_roi, self.peaks_in_roi, self.peak_idx
+        print(f"[DEBUG] Full trace min/max for {self.current_roi}: {trace.min()}/{trace.max()}")
 
     def update_plot(self):
         self.current_roi = self.roi_ids[self.roi_idx]

@@ -15,14 +15,15 @@ def build_ui(parent):
         ui_elements: A dictionary of references to individual UI widgets.
     """
     layout = QVBoxLayout()
-
     ui_elements = {}
 
+    # File selection
     ui_elements['file_list_widget'] = QListWidget()
     ui_elements['file_list_widget'].setSelectionMode(QAbstractItemView.SingleSelection)
     layout.addWidget(QLabel("Select recording to process:"))
     layout.addWidget(ui_elements['file_list_widget'])
 
+    # File type dropdown
     layout.addWidget(QLabel("Select file type:"))
     ui_elements['filetype_combo'] = QComboBox()
     ui_elements['filetype_combo'].addItems(["CSV", "NPY"])
@@ -34,12 +35,22 @@ def build_ui(parent):
     ui_elements['file_label'] = QLabel("No folder selected")
     layout.addWidget(ui_elements['file_label'])
 
+    # Checkbox for filtering Suite2p cells (hidden by default)
+    ui_elements['cell_filter_checkbox'] = QCheckBox("REMOVE NON-CELL suite2p ROIs")
+    ui_elements['cell_filter_checkbox'].setVisible(False)
+    # We'll insert this above the NPY filename input later
+
+    # NPY filename input
     ui_elements['npy_filename_input'] = QLineEdit("F.npy")
     ui_elements['npy_filename_input'].setPlaceholderText("Enter NPY filename (e.g., data.npy)")
     ui_elements['npy_filename_input'].setEnabled(False)
     layout.addWidget(QLabel("NPY Filename (only if NPY selected):"))
     layout.addWidget(ui_elements['npy_filename_input'])
 
+    # Insert checkbox above NPY input
+    layout.insertWidget(layout.indexOf(ui_elements['npy_filename_input']), ui_elements['cell_filter_checkbox'])
+
+    # Other analysis parameters
     layout.addWidget(QLabel("Sampling frequency (Hz):"))
     ui_elements['fs_input'] = QLineEdit("5")
     layout.addWidget(ui_elements['fs_input'])
@@ -74,14 +85,14 @@ def build_ui(parent):
     ui_elements['display_window_input'] = QLineEdit("20")
     layout.addWidget(ui_elements['display_window_input'])
 
-    layout.addWidget(QLabel("Y-axis range (comma-separated floats, e.g. -0.3,2):"))
-    ui_elements['yax_input'] = QLineEdit("-0.3,2")
+    layout.addWidget(QLabel("Y-axis range (comma-separated floats, e.g. -1,1):"))
+    ui_elements['yax_input'] = QLineEdit("-1,1")
     layout.addWidget(ui_elements['yax_input'])
 
     ui_elements['transpose_checkbox'] = QCheckBox("Transpose data? (Rachel check this; Lexi don't)")
     layout.addWidget(ui_elements['transpose_checkbox'])
 
-    # New inputs for custom pre and post ranges
+    # Optional pre/post range inputs
     ui_elements['pre_range_input'] = QLineEdit()
     ui_elements['pre_range_input'].setPlaceholderText("Optional: Pre Range (e.g., 0-100)")
     layout.addWidget(ui_elements['pre_range_input'])
@@ -90,11 +101,12 @@ def build_ui(parent):
     ui_elements['post_range_input'].setPlaceholderText("Optional: Post Range (e.g., 200-300)")
     layout.addWidget(ui_elements['post_range_input'])
 
+    # Swap the order of the buttons: Plot All ROIs first, then Run Analysis
+    ui_elements['plot_all_button'] = QPushButton("Plot All ROIs")
+    layout.addWidget(ui_elements['plot_all_button'])
+
     ui_elements['run_button'] = QPushButton("Run Analysis")
     layout.addWidget(ui_elements['run_button'])
 
-    ui_elements['plot_all_button'] = QPushButton("Plot All ROIs")
-    ui_elements['plot_all_button'].setFixedHeight(ui_elements['run_button'].sizeHint().height())
-    layout.addWidget(ui_elements['plot_all_button'])
-
+    # Return the layout and UI elements dictionary
     return layout, ui_elements

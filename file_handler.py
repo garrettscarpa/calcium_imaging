@@ -3,18 +3,29 @@ import glob
 from PyQt5.QtWidgets import QFileDialog, QListWidgetItem, QMessageBox
 
 def filetype_changed(app):
-    file_type = app.filetype_combo.currentText()
+    file_type = app.filetype_combo.currentText().upper()
+
     if file_type == "NPY":
+        # Enable and show NPY filename input
         app.npy_filename_input.setEnabled(True)
         app.npy_filename_input.setVisible(True)
+
+        # Show Suite2p cell filter checkbox
+        app.cell_filter_checkbox.setVisible(True)
     else:
+        # Disable and hide NPY filename input
         app.npy_filename_input.setEnabled(False)
         app.npy_filename_input.clear()
         app.npy_filename_input.setVisible(False)
+
+        # Hide Suite2p cell filter checkbox
+        app.cell_filter_checkbox.setVisible(False)
+
+        # Reset folder paths and label
         app.npy_folder_path = None
         app.csv_folder_path = None
         app.file_label.setText("No file/folder selected")
-
+        
 def select_file_or_folder(app):
     file_type = app.filetype_combo.currentText()
     folder_path = QFileDialog.getExistingDirectory(app, "Select folder containing files")

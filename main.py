@@ -17,6 +17,7 @@ class CalciumImagingApp(QWidget):
         self.setWindowTitle("Calcium Imaging Analysis")
         self.csv_path = None
         self.npy_folder_path = None
+        self.figures = []  # Initialize the list of figures
 
         # Build UI layout and retrieve all widgets
         layout, ui = build_ui(self)
@@ -42,6 +43,7 @@ class CalciumImagingApp(QWidget):
         self.post_range_input = ui['post_range_input']
         self.run_button = ui['run_button']
         self.plot_all_button = ui['plot_all_button']
+        self.cell_filter_checkbox = ui['cell_filter_checkbox']
 
         # Connect signals to methods and external handlers
         self.filetype_combo.currentIndexChanged.connect(lambda: filetype_changed(self))
@@ -50,95 +52,148 @@ class CalciumImagingApp(QWidget):
         self.run_button.clicked.connect(self.run_analysis)
         self.plot_all_button.clicked.connect(self.plot_all_rois)
 
-    def plot_all_rois(self):    
-        # Ensure one file is selected
+    def plot_all_rois(self):
         selected_items = self.file_list_widget.selectedItems()
         if not selected_items:
-            QMessageBox.warning(self, "No selection", "Please select one recording from the list.")
+            QMessageBox.warning(self, "No selection", "Please select one .npy recording from the list.")
             return
     
-        selected_file = selected_items[0].text()  # Only the first selected file
+        selected_file = selected_items[0].text()
+        if not selected_file.lower().endswith('.npy'):
+            QMessageBox.warning(self, "Invalid file type", "Only .npy files can be plotted with 'Plot All ROIs'.")
+            return
     
-        # Parse numeric inputs
         try:
-            fs = float(self.fs_input.text())
+            fs = float(self.fs_input.text())  # Sampling rate in Hz (samples per second)
             truncate_seconds = float(self.truncate_seconds_input.text())
+            truncate_samples = int(truncate_seconds * fs)  # Number of samples to truncate
+            transpose = self.transpose_checkbox.isChecked()
+            smoothing_window_length = int(self.smoothing_window_input.text())
+            poly_order = int(self.poly_order_input.text())
+            y_ax_range = tuple(map(float, self.yax_input.text().split(',')))
+            display_window = float(self.display_window_input.text())
         except ValueError:
-            QMessageBox.warning(self, "Error", "Please enter valid numeric values for sampling frequency and truncation.")
+            QMessageBox.warning(self, "Error", "Please enter valid numeric values.")
             return
     
-        transpose = self.transpose_checkbox.isChecked()
-    
-        # Call the function from plotting.py
-        plot_all_rois_from_files(
-            file_list=[selected_file],  # Use only the selected file
-            fs=fs,
-            truncate_seconds=truncate_seconds,
-            transpose=transpose,
-            ca_marker='*',  # Customize if needed
-            display_window=float(self.display_window_input.text()),
-            y_ax_range=tuple(map(float, self.yax_input.text().split(',')))  # expects "ymin,ymax"
+        # Load & preprocess with iscell filtering
+        data, smoothed_dff_df = load_and_preprocess(
+            selected_file,
+            "NPY",
+            transpose,
+            truncate_samples,
+            smoothing_window_length,
+            poly_order,
+            include_only_cells=self.cell_filter_checkbox.isChecked()
         )
-
-
-    def run_analysis(self):
-        selected_type = self.filetype_combo.currentText()
+        print(smoothed_dff_df)
+        # Create time vector in seconds (X-axis in seconds)
+        time = smoothed_dff_df.columns / fs  # Convert sample indices to time (seconds)
     
-        file_list = validate_and_get_file_list(self, selected_type)
-        if file_list is None:
-            return
+        # Plot
+        fig, ax = plt.subplots()
+        smoothed_dff_df.T.plot(ax=ax)
     
-        params = parse_analysis_parameters(self)
-        if params is None:
-            QMessageBox.warning(self, "Error", "Please enter valid numeric values for all parameters.")
-            return
+        # Auto scale y-axis based on data
+        y_min = smoothed_dff_df.min().min()
+        y_max = smoothed_dff_df.max().max()
+        padding = 0.05 * (y_max - y_min)  # 5% padding
+        ax.set_ylim(y_min - padding, y_max + padding)
     
-        transpose = self.transpose_checkbox.isChecked()
-        figures = []
-        selected_items = self.file_list_widget.selectedItems()
-        if not selected_items:
-            QMessageBox.warning(self, "No selection", "Please select at least one recording from the list.")
-            return
+        # Set the x-axis to be time in seconds
+        ax.set_xticks(ax.get_xticks())  # Get current tick positions
+        ax.set_xticklabels([f"{x/fs:.2f}" for x in ax.get_xticks()])  # Convert to time in seconds
     
-        for item in selected_items:
-            file_path = item.text()
-            try:
-                data, smoothed_dff_df = load_and_preprocess(
-                    file_path, selected_type, transpose,
-                    params['truncate_samples'], params['smoothing_window_length'], params['polynomial_order']
-                )
-    
-                loader = DataLoader(data, params['fs'])
-    
-                peak_results_df, export_dir, file_prefix = load_or_detect_peaks(
-                    self, file_path, smoothed_dff_df, params['fs'], params['prominence'],
-                    params['min_height'], params['min_plateau_samples']
-                )
-                if peak_results_df is None:
-                    return
-    
-                fig = setup_plot_and_interaction(
-                    self, smoothed_dff_df, peak_results_df, params['fs'],
-                    params['display_window'], params['y_ax_range'],
-                    export_dir, file_prefix, loader
-                )
-    
-                try:
-                    fig.canvas.manager.window.activateWindow()
-                    fig.canvas.manager.window.raise_()
-                except Exception as e:
-                    print(f"Could not raise figure window: {e}")
-    
-                figures.append(fig)
-    
-            except Exception as e:
-                import traceback
-                traceback_str = traceback.format_exc()
-                print(f"[ERROR] Failed to process file: {file_path}\n{traceback_str}")
-                QMessageBox.critical(self, "Error", f"Error processing {file_path}:\n\n{str(e)}")
-
+        # Label x-axis as 'Time (s)'
+        ax.set_xlabel('Time (s)')
+        ax.set_ylabel('ΔF/F')
     
         plt.show()
+    
+    def run_analysis(self):
+        selected_items = self.file_list_widget.selectedItems()
+        if not selected_items:
+            QMessageBox.warning(self, "No selection", "Please select one .npy recording from the list.")
+            return
+    
+        selected_file = selected_items[0].text()
+        if not selected_file.lower().endswith('.npy'):
+            QMessageBox.warning(self, "Invalid file type", "Only .npy files can be plotted with 'Plot All ROIs'.")
+            return
+    
+        try:
+            # Retrieve and validate inputs
+            fs = float(self.fs_input.text())  # Sampling rate in Hz (samples per second)
+            truncate_seconds = float(self.truncate_seconds_input.text())
+            truncate_samples = int(truncate_seconds * fs)  # Number of samples to truncate
+            transpose = self.transpose_checkbox.isChecked()
+            smoothing_window_length = int(self.smoothing_window_input.text())
+            poly_order = int(self.poly_order_input.text())
+            y_ax_range = tuple(map(float, self.yax_input.text().split(',')))
+            display_window = float(self.display_window_input.text())
+        except ValueError:
+            QMessageBox.warning(self, "Error", "Please enter valid numeric values.")
+            return
+    
+        # Now handle the parameters with more validation
+        try:
+            # Check if the fields are empty, and set default values if necessary
+            prominence = float(self.prominence_input.text()) if self.prominence_input.text() else 0.1
+            min_height = float(self.min_height_input.text()) if self.min_height_input.text() else 0.0
+            min_plateau_samples = int(self.min_plateau_input.text()) if self.min_plateau_input.text() else 3
+        except ValueError:
+            QMessageBox.warning(self, "Error", "Please enter valid numeric values for prominence, min height, and plateau samples.")
+            return
+    
+        # Create the params dictionary
+        params = {
+            'fs': fs,
+            'prominence': prominence,
+            'min_height': min_height,
+            'min_plateau_samples': min_plateau_samples,
+            'display_window': display_window,
+            'y_ax_range': y_ax_range
+        }
+    
+        # Load & preprocess with iscell filtering
+        data, smoothed_dff_df = load_and_preprocess(
+            selected_file,
+            "NPY",
+            transpose,
+            truncate_samples,
+            smoothing_window_length,
+            poly_order,
+            include_only_cells=self.cell_filter_checkbox.isChecked()
+        )
+    
+        print(smoothed_dff_df)
+    
+        # Load peaks
+        peak_results_df, export_dir, file_prefix = load_or_detect_peaks(
+            self, selected_file, smoothed_dff_df, params['fs'], params['prominence'],
+            params['min_height'], params['min_plateau_samples']
+        )
+        if peak_results_df is None:
+            return
+    
+        # Set up the plot and interaction
+        fig = setup_plot_and_interaction(
+            self, smoothed_dff_df, peak_results_df, params['fs'],
+            params['display_window'], params['y_ax_range'],
+            export_dir, file_prefix, DataLoader(data, params['fs'])
+        )
+    
+        try:
+            fig.canvas.manager.window.activateWindow()
+            fig.canvas.manager.window.raise_()
+        except Exception as e:
+            print(f"Could not raise figure window: {e}")
+    
+        # Append the figure to the list
+        self.figures.append(fig)
+    
+        plt.show()
+
 
 
 if __name__ == "__main__":

@@ -5,8 +5,8 @@ from PyQt5.QtWidgets import QMessageBox
 import os
 
 class PeakDetector:
-    def __init__(self, smoothed_df, fs, prominence, min_height=None, min_plateau_samples=None):
-        self.smoothed_df = smoothed_df
+    def __init__(self, smoothed_dff_df, fs, prominence, min_height=None, min_plateau_samples=None):
+        self.smoothed_dff_df = smoothed_dff_df
         self.fs = fs
         self.prominence = prominence
         self.min_height = min_height
@@ -41,7 +41,7 @@ class PeakDetector:
 
     def _detect_peaks(self):
         all_peaks = []
-        for cell_id, trace in self.smoothed_df.iterrows():
+        for cell_id, trace in self.smoothed_dff_df.iterrows():
             trace_values = trace.values
             peaks, props = find_peaks(trace_values, prominence=self.prominence)
             
@@ -128,6 +128,10 @@ class PeakDetector:
         return self.peak_results_df
 
 def load_or_detect_peaks(app, file_path, smoothed_dff_df, fs, prominence, min_height, min_plateau_samples):
+    """
+    smoothed_dff_df: pass ΔF/F from load_and_preprocess (already normalized)
+    """
+
     export_dir = os.path.dirname(file_path)
     file_prefix = os.path.splitext(os.path.basename(file_path))[0] if file_path.endswith('.csv') else os.path.basename(os.path.dirname(file_path))
     filtered_peaks_path = os.path.join(export_dir, f"{file_prefix}_filtered_peaks.csv")
@@ -139,7 +143,7 @@ def load_or_detect_peaks(app, file_path, smoothed_dff_df, fs, prominence, min_he
                 app, "No Peaks Detected",
                 "No peaks detected with the given parameters.\nTry entering a different Minimum Peak Height or Plateau Size."
             )
-            return None
+            return None, export_dir, file_prefix
 
         def shift_roi(roi_str):
             prefix = 'ROI_'
@@ -153,13 +157,17 @@ def load_or_detect_peaks(app, file_path, smoothed_dff_df, fs, prominence, min_he
         peak_results_df = peak_results_df[peak_results_df['cell_id'].isin(valid_rois)]
         peak_results_df = peak_results_df.sort_values(by=['cell_id', 'peak_time'])
     else:
+        # Pass ΔF/F directly to PeakDetector
+        from peak_analysis import PeakDetector
+
         detector = PeakDetector(smoothed_dff_df, fs, prominence, min_height=min_height, min_plateau_samples=min_plateau_samples)
         peak_results_df = detector.get_peak_dataframe()
+
         if peak_results_df.empty:
             QMessageBox.warning(
                 app, "No Peaks Detected",
                 "No peaks detected with the given Minimum Peak Height.\nTry entering a different Minimum Peak Height."
             )
-            return None
+            return None, export_dir, file_prefix
 
     return peak_results_df, export_dir, file_prefix
